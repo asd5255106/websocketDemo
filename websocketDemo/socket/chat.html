@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .msg-list {
+            position: relative;
+            width: 600px;
+            margin: 0 auto;
+        }
+
+        .msg-list ul {
+            padding: 10px;
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+        }
+
+        .msg-list li {
+            float: left;
+            clear: both;
+            margin: 10px 0;
+            padding: 5px;
+            line-height: 2;
+            border-radius: 5px;
+            background-color: #efefef;
+        }
+
+        .msg-list li h4 {
+            margin: 0;
+            margin-bottom: 10px
+        }
+
+        .msg-list li.active {
+            float: right;
+            background-color: #58bc58;
+            color: #fff;
+        }
+
+        .msg-list textarea {
+            display: block;
+            min-height: 50px;
+            margin: 10px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .status {
+            display: none;
+            position: absolute;
+            left: 50px;
+            bottom: 0;
+            right: 0;
+            padding: 5px 10px;
+            text-align: center;
+            color: #999;
+        }
+
+        .login {
+            text-align: right;
+            margin-bottom: 30px;
+        }
+        .btn-login{
+            margin-right: 5px;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>多人聊天室</h1>
+    <div id="autoAnswer" class="msg-list">
+        <div class="login"><input type="text" name="username" id="username"><button class="btn-login">进入</button><button
+                class="btn-logout">退出</a></div>
+        <ul>
+            <!-- <li>约吗</li>
+            <li class="active">滚</li> -->
+        </ul>
+        <textarea></textarea>
+        <button class="btn-send">提交</button>
+        <div class="status"></div>
+    </div>
+</body>
+<script>
+    (() => {
+        let autoAnswer = document.querySelector('#autoAnswer');
+        let login = autoAnswer.querySelector('.login');
+        let username = login.children[0];
+        let btnLogin = login.children[1];
+        let btnLogout = login.children[2];
+
+        let msglist = autoAnswer.querySelector('ul');
+        let msg = autoAnswer.querySelector('textarea');
+        let btnSend = autoAnswer.querySelector('.btn-send');
+        let status = autoAnswer.querySelector('.status');
+
+        //功能：构造一个对象，用于存储发送给服务器端的数据
+        function data(status,username,content,time){
+            //username:用户名, content:用户提交内容, time：时间
+            /*
+                status:
+					0:退出登录
+					1:登录成功
+					2:发送消息
+				data:{username,content,time}
+            */
+            let data = {
+                status,
+                username,
+                content,
+                time
+            }
+            return JSON.stringify(data)
+        }
+
+        let conlist = []   /* 存储聊天记录的数组 */
+        function createList(){
+            let str = conlist.map(item => {
+                return `<li ${item.username === username.value ? 'class="active"' : ''}>
+                                <h4>${item.username}：</h4>
+                                <div>${item.content}</div>
+                                <time>${new Date(item.time).toLocaleString()}</time>
+                        </li>`;
+            })
+            msglist.innerHTML = str;
+        }
+
+
+        // 链接ws服务器
+        //点击进入聊天室的时候连接ws服务器
+        let socket = null;
+
+        btnLogin.onclick = () => {
+            let name = username.value.trim();
+            if(name) {
+                socket = new WebSocket('ws://localhost:2002');
+                username.disabled = true;
+            }
+
+            //前端事件：监听到各种状态：1、连接了；2、断开了；3、出错了；4、收到消息了
+
+            // 链接成功
+            socket.onopen = () => {
+                let res = data(1,name,'','');
+                socket.send(res);//登陆成功的时候，就把消息发给服务器端
+                status.style.display = 'block';
+            }
+
+            // 接收信息
+            socket.onmessage = ev => {
+                console.log(ev.data)
+                let data = JSON.parse(ev.data);//ev.data就是服务器广播的消息
+
+                if(data.status ==1){
+                    //登陆成功的消息准备广播给所有人看
+                    status.innerHTML = data.username + '进入聊天室';
+                }
+
+                if(data.status == 2){
+                    //接收聊天内容
+                    conlist.push(data);
+                    createList()
+                }
+
+                if(data.status == 0){
+                    //退出消息广播给所有人
+                    status.innerHTML = data.username + '退出聊天室';
+                    username.disabled = false
+                }
+            }
+        }
+
+        //点击提交的时候：发送消息给服务器端
+        btnSend.onclick = () => {
+            let inf = msg.value;
+            if(inf) {
+                let res = data(2,username.value,inf,new Date())
+                socket.send(res);//发送消息给服务器端
+            }
+            msg.value = ''
+        }
+
+        // 退出
+        btnLogout.onclick = () => {
+            let res = data(0,username.value,'','');
+            socket.send(res);
+            socket.close()
+        }
+    })()
+</script>
+</html>
